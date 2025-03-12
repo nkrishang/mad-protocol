@@ -128,7 +128,7 @@ contract MAD is ERC20 {
         require((pCollateral.mulWad(priceWAD)).divWad(pDebt) > uint256(110 ether).divWad(100 ether), TCROutOfBounds());
 
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
-        require(borrow.divWad(collateral) < uint256(90 ether).divWad(100 ether), LTVOutOfBounds());
+        require(borrow.divWad(collateral.mulWad(priceWAD)) < uint256(90 ether).divWad(100 ether), LTVOutOfBounds());
 
         // Check whether TCR post-debt is above 110%
         require(
