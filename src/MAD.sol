@@ -41,6 +41,9 @@ contract MAD is ERC20 {
     /// @notice Emitted when $MAD is staked.
     event Stake(address indexed owner, uint256 amount);
 
+    /// @notice Emitted when $MAD is unstaked.
+    event Unstake(address indexed owner, uint256 amount);
+
     /// @notice Emitted when staker claims rewards.
     event ClaimRewards(address indexed owner, uint256 amount);
 
@@ -200,7 +203,7 @@ contract MAD is ERC20 {
         emit Stake(onBehalf, amount);
     }
 
-    function unstake(uint256 amount, address onBehalf) external {
+    function unstake(address onBehalf) external {
         // Accrue rewards and update lifetime reward per $MAD.
         _accountRewards();
 
@@ -215,19 +218,22 @@ contract MAD is ERC20 {
         // Update staker's reward debt.
         rewardDebt[onBehalf] += totalRewards;
 
-        // Update total staked amount.
-        totalStaked -= amount;
+        // Calculate withdraw amount.
+        uint256 withdrawAmount = balanceOf(address(this)).mulWad(stakeAmount).divWad(totalStaked);
 
-        // Update staker's stake amount.
-        staked[onBehalf] -= amount;
+        // Update total staked amount.
+        totalStaked -= stakeAmount;
+
+        // Reset staker's stake amount.
+        delete staked[onBehalf];
 
         // Transfer rewards to staker.
         WRAPPED_NATIVE_TOKEN.transfer(onBehalf, totalRewards);
 
         // Transfer $MAD stake to the staker.
-        _transfer(address(this), onBehalf, amount);
+        _transfer(address(this), onBehalf, withdrawAmount);
 
-        emit Stake(onBehalf, amount);
+        emit Unstake(onBehalf, withdrawAmount);
     }
 
     function claimRewards(address onBehalf) external {
