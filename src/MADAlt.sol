@@ -27,6 +27,8 @@ contract MAD is ERC20 {
     //                            ERRORS                            //
     // =============================================================//
 
+    error PositionDNE();
+    error LTVInBounds();
     error TCROutOfBounds();
     error LTVOutOfBounds();
     error InsufficientMintCollateral();
@@ -72,9 +74,9 @@ contract MAD is ERC20 {
     uint256 public variableFeeRate;
     uint256 public lastFeeUpdateTimestamp;
 
-    uint256 public totalSystemDebt;
-    uint256 public totalSystemCollateral;
+    uint256 public totalSystemDebtPoints;
     uint256 public lifetimeDebtPerDebtPoint;
+    uint256 public totalSystemCollateralPoints;
     uint256 public lifetimeCollateralPerCollateralPoint;
 
     uint256 public nextPositionId;
@@ -100,6 +102,9 @@ contract MAD is ERC20 {
         require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientMintCollateral());
 
         // Check whether Total Collateral Ratio (TCR) is above 110%.
+        uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(lifetimeDebtPerDebtPoint);
+        uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(lifetimeCollateralPerCollateralPoint);
+
         require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
 
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
@@ -163,6 +168,63 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(recipient, nativeTokenValue);
 
         emit Redeem(onBehalf, amount, nativeTokenValue);
+    }
+
+    // =============================================================//
+    //                          LIQUIDATE                           //
+    // =============================================================//
+
+    function liquidate(uint256 positionId, address recipient) external {
+        // Get the native token price.
+        uint256 priceWAD = _getPriceWAD();
+
+        // Get position details.
+        Position memory pos = positions[positionId];
+
+        // Check whether position exists.
+        require(pos.collateralPoints > 0, PositionDNE());
+
+        // Calculate LTV.
+        uint256 posDebt = lifetimeDebtPerDebtPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+        uint256 posCollateral =
+            lifetimeCollateralPerCollateralPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+
+        // Check whether LTV is above 90%.
+        require(posDebt.divWad(posCollateral.mulWad(priceWAD)) >= 0.9 ether, LTVInBounds());
+
+        // Calculate liquidation reward in collateral.
+        uint256 liquidationCollateralReward = posCollateral.mulWad(BASE_FEE_RATE_BPS);
+
+        // Cover as much debt as possible from insurance reserve.
+        uint256 systemBalance = balanceOf(address(this));
+        uint256 insured = systemBalance > posDebt ? posDebt : systemBalance;
+
+        if (insured > 0) {
+            // Transfer liquidation reserve from system to recipient.
+            transfer(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+
+            // Burn remainder debt amount of $MAD from system reserve.
+            _burn(address(this), insured - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+
+            // Compensate system with collateral.
+            unaccountedRewardPool += (posCollateral - liquidationCollateralReward);
+        } else {
+            // Distribute debt across positions.
+            lifetimeDebtPerDebtPoint += posDebt.divWad(totalSystemDebtPoints);
+
+            // Distribute collateral across positions.
+            lifetimeCollateralPerCollateralPoint +=
+                (posCollateral - liquidationCollateralReward).divWad(totalSystemCollateralPoints);
+
+            // Mint liquidation reserve from system to recipient.
+            _mint(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+        }
+
+        // Transfer liquidation reward in collateral to recipient.
+        WRAPPED_NATIVE_TOKEN.transfer(recipient, liquidationCollateralReward);
+
+        // Delete position.
+        delete positions[positionId];
     }
 
     // =============================================================//
