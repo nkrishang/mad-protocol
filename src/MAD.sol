@@ -19,94 +19,66 @@ contract MAD is ERC20 {
     //                            ERRORS                            //
     // =============================================================//
 
-    /// @notice Emitted when a borrow action pushes the Total Collateral Ratio (TCR) below 110%.
+    error PositionDNE();
+    error LTVInBounds();
     error TCROutOfBounds();
-
-    /// @notice Emitted when a borrow action pushes the position Loan To Value (LTV) greater than 90%.
     error LTVOutOfBounds();
-
-    /// @notice Emitted when the provided collateral is less than the minimum required value to mint $MAD.
     error InsufficientMintCollateral();
 
     // =============================================================//
     //                            EVENTS                            //
     // =============================================================//
 
-    /// @notice Emitted when a new $MAD is minted.
     event Mint(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
-    /// @notice Emitted when native tokens are redeemed for $MAD.
     event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
 
-    /// @notice Emitted when $MAD is staked.
     event Stake(address indexed owner, uint256 amount);
 
-    /// @notice Emitted when $MAD is unstaked.
     event Unstake(address indexed owner, uint256 amount);
 
-    /// @notice Emitted when staker claims rewards.
     event ClaimRewards(address indexed owner, uint256 amount);
 
     // =============================================================//
     //                           CONSTANTS                          //
     // =============================================================//
 
-    // ========================= Fee Rates =========================//
-
-    /// @notice The decay rate constant for half life of 6 hours.
-    int256 public constant DECAY_RATE_SCALED = 0.89 ether;
-
-    /// @notice The base fee rate for mints and redemptions (1 percent).
-    uint256 public constant BASE_FEE_RATE_BPS = 0.01 ether;
-
-    /// @notice The maximum fee rate for mints and redemptions (4 percent).
-    uint256 public constant MAX_VARIABLE_FEE_RATE_BPS = 0.04 ether;
-
-    // ========================= Collateral =========================//
-
-    /// @notice The minimum collateral value in USD required to mint $MAD.
     uint256 public constant MIN_COLLATERAL_VALUE_UNSCALED = 2000;
 
-    /// @notice The fixed refundable debt amount reserved for liquidation incentive.
     uint256 public constant REFUNDABLE_LIQUIDATION_RESERVE_SCALED = 200 ether;
+
+    int256 public constant DECAY_RATE_SCALED = 0.89 ether;
+    uint256 public constant BASE_FEE_RATE_BPS = 0.01 ether;
+    uint256 public constant MAX_VARIABLE_FEE_RATE_BPS = 0.04 ether;
 
     // =============================================================//
     //                          IMMUTABLES                          //
     // =============================================================//
 
-    /// @notice Address of the price oracle contract.
     IOracle public immutable PRICE_ORACLE;
 
-    /// @notice Address of the canonical native token wrapper contract.
     WETH public immutable WRAPPED_NATIVE_TOKEN;
 
     // =============================================================//
     //                           STORAGE                            //
     // =============================================================//
 
-    // ========================= Fee Rates =========================//
-
-    /// @notice The variable fee rate for mints and redemptions.
     uint256 public variableFeeRate;
+    uint256 public lastFeeUpdateTimestamp;
 
-    /// @notice The timestamp when a redemption last occured.
-    uint256 public lastRedemptionTimestamp;
+    uint256 public totalSystemDebtPoints;
+    uint256 public lifetimeDebtPerDebtPoint;
+    uint256 public totalSystemCollateralPoints;
+    uint256 public lifetimeCollateralPerCollateralPoint;
 
-    // ========================= Positions ==========================//
-
-    /// @notice The ID assigned to the next new position created.
     uint256 public nextPositionId;
 
-    /// @notice Maps a position ID => position id, owner, collateral and debt.
-    mapping(uint256 id => Position pos) public positions;
-
-    // ===================== Insurance Reserve ======================//
-
+    uint256 public totalStaked;
     uint256 public unpaidRewardPool;
     uint256 public unaccountedRewardPool;
     uint256 public lifetimeRewardPerMAD;
-    uint256 public totalStaked;
 
+    mapping(uint256 id => Position data) public positions;
     mapping(address staker => uint256 stakeAmount) public staked;
     mapping(address staker => uint256 rewardDebt) public rewardDebt;
 
@@ -122,36 +94,46 @@ contract MAD is ERC20 {
         require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientMintCollateral());
 
         // Check whether Total Collateral Ratio (TCR) is above 110%.
-        uint256 pCollateral = WRAPPED_NATIVE_TOKEN.balanceOf(address(this));
-        uint256 pDebt = totalSupply();
+        uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(lifetimeDebtPerDebtPoint);
+        uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(lifetimeCollateralPerCollateralPoint);
 
-        require((pCollateral.mulWad(priceWAD)).divWad(pDebt) > uint256(110 ether).divWad(100 ether), TCROutOfBounds());
+        require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
 
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
-        require(borrow.divWad(collateral.mulWad(priceWAD)) < uint256(90 ether).divWad(100 ether), LTVOutOfBounds());
+        require(borrow.divWad(collateral.mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
         // Check whether TCR post-debt is above 110%
         require(
-            (pCollateral + collateral).mulWad(priceWAD).divWad(pDebt + borrow) > uint256(110 ether).divWad(100 ether),
+            (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + borrow) > 1.1 ether,
             TCROutOfBounds()
         );
 
         // Calculate full debt (borrow + fees)
         uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow) + REFUNDABLE_LIQUIDATION_RESERVE_SCALED;
 
+        // Calculate cancelled collateral and debt
+        uint256 cancelledDebt = lifetimeDebtPerDebtPoint.mulWad(borrow);
+        uint256 cancelledCollateral = lifetimeCollateralPerCollateralPoint.mulWad(collateral);
+
+        // Increment lifetime collateral and debt accrued per point.
+        lifetimeDebtPerDebtPoint++;
+        lifetimeCollateralPerCollateralPoint++;
+
+        // Update total system debt and collateral.
+        totalSystemDebt += debt;
+        totalSystemCollateral += collateral;
+
         // Get the next position ID.
         uint256 id = nextPositionId++;
 
         // Create and store position struct.
-        positions[id] = Position(id, onBehalf, debt, collateral);
+        positions[id] = Position(id, onBehalf, debt, cancelledDebt, collateral, cancelledCollateral);
 
         // Pull wrapped native tokens as collateral
         WRAPPED_NATIVE_TOKEN.transferFrom(onBehalf, address(this), collateral);
 
         // Mint borrow amount of $MAD
         _mint(recipient, borrow);
-
-        emit Mint(id, onBehalf, debt, collateral);
     }
 
     // =============================================================//
@@ -178,6 +160,63 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(recipient, nativeTokenValue);
 
         emit Redeem(onBehalf, amount, nativeTokenValue);
+    }
+
+    // =============================================================//
+    //                          LIQUIDATE                           //
+    // =============================================================//
+
+    function liquidate(uint256 positionId, address recipient) external {
+        // Get the native token price.
+        uint256 priceWAD = _getPriceWAD();
+
+        // Get position details.
+        Position memory pos = positions[positionId];
+
+        // Check whether position exists.
+        require(pos.collateralPoints > 0, PositionDNE());
+
+        // Calculate LTV.
+        uint256 posDebt = lifetimeDebtPerDebtPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+        uint256 posCollateral =
+            lifetimeCollateralPerCollateralPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+
+        // Check whether LTV is above 90%.
+        require(posDebt.divWad(posCollateral.mulWad(priceWAD)) >= 0.9 ether, LTVInBounds());
+
+        // Calculate liquidation reward in collateral.
+        uint256 liquidationCollateralReward = posCollateral.mulWad(BASE_FEE_RATE_BPS);
+
+        // Cover as much debt as possible from insurance reserve.
+        uint256 systemBalance = balanceOf(address(this));
+        uint256 insured = systemBalance > posDebt ? posDebt : systemBalance;
+
+        if (insured > 0) {
+            // Transfer liquidation reserve from system to recipient.
+            transfer(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+
+            // Burn remainder debt amount of $MAD from system reserve.
+            _burn(address(this), insured - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+
+            // Compensate system with collateral.
+            unaccountedRewardPool += (posCollateral - liquidationCollateralReward);
+        } else {
+            // Distribute debt across positions.
+            lifetimeDebtPerDebtPoint += posDebt.divWad(totalSystemDebtPoints);
+
+            // Distribute collateral across positions.
+            lifetimeCollateralPerCollateralPoint +=
+                (posCollateral - liquidationCollateralReward).divWad(totalSystemCollateralPoints);
+
+            // Mint liquidation reserve from system to recipient.
+            _mint(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+        }
+
+        // Transfer liquidation reward in collateral to recipient.
+        WRAPPED_NATIVE_TOKEN.transfer(recipient, liquidationCollateralReward);
+
+        // Delete position.
+        delete positions[positionId];
     }
 
     // =============================================================//
@@ -277,14 +316,21 @@ contract MAD is ERC20 {
     }
 
     // =============================================================//
+    //                            PRICE                             //
+    // =============================================================//
+
+    function _getPriceWAD() private view returns (uint256) {
+        return PRICE_ORACLE.price() * (1 ether / PRICE_ORACLE.scale());
+    }
+
+    // =============================================================//
     //                         FEE RATE                             //
     // =============================================================//
 
-    /// @dev Returns the fee rate for minting or redeeming $MAD.
     function _getFeeRateWAD(uint256 redeemAmount) private returns (uint256) {
         // Variable fee rate is calculated as `r(n) = r(n-1) * (decay ^ hoursElapsed)`.
         uint256 currentVariableRate = variableFeeRate.mulWadUp(
-            uint256(DECAY_RATE_SCALED.powWad(int256((block.timestamp - lastRedemptionTimestamp) / 1 hours)))
+            uint256(DECAY_RATE_SCALED.powWad(int256((block.timestamp - lastFeeUpdateTimestamp) / 1 hours)))
         );
 
         if (redeemAmount > 0) {
@@ -298,23 +344,14 @@ contract MAD is ERC20 {
             }
 
             variableFeeRate = nextVariableRate;
-            lastRedemptionTimestamp = block.timestamp;
+            lastFeeUpdateTimestamp = block.timestamp;
         }
 
         return BASE_FEE_RATE_BPS + currentVariableRate;
     }
 
     // =============================================================//
-    //                           PRICE                              //
-    // =============================================================//
-
-    /// @dev Returns the price of 1 native token in USD, scaled by 1e18.
-    function _getPriceWAD() private view returns (uint256) {
-        return PRICE_ORACLE.price() * (1 ether / PRICE_ORACLE.scale());
-    }
-
-    // =============================================================//
-    //                       ERC20 METADATA                         //
+    //                        ERC20 METADATA                        //
     // =============================================================//
 
     /// @dev Returns the name of the token.
