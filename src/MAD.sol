@@ -23,7 +23,7 @@ contract MAD is ERC20 {
     error LTVInBounds();
     error TCROutOfBounds();
     error LTVOutOfBounds();
-    error InsufficientMintCollateral();
+    error InsufficientCollateral();
 
     // =============================================================//
     //                            EVENTS                            //
@@ -32,6 +32,8 @@ contract MAD is ERC20 {
     event Mint(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
     event Supply(uint256 indexed id, uint256 collateral);
+
+    event Withdraw(uint256 indexed id, uint256 collateral);
 
     event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
 
@@ -91,7 +93,7 @@ contract MAD is ERC20 {
         uint256 priceWAD = _getPriceWAD();
 
         // Check whether provided collateral is GTE minimum collateral value. (e.g. 2000 USD)
-        require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientMintCollateral());
+        require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientCollateral());
 
         // Check whether Total Collateral Ratio (TCR) is above 110%.
         uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(lifetimeDebtPerDebtPoint);
@@ -134,6 +136,53 @@ contract MAD is ERC20 {
 
         // Mint borrow amount of $MAD
         _mint(recipient, borrow);
+    }
+
+    // =============================================================//
+    //                      COLLATERAL MANAGEMENT                   //
+    // =============================================================//
+
+    function withdrawCollateral(uint256 positionId, uint256 collateral, address recipient) external {
+        // Get the native token price.
+        uint256 priceWAD = _getPriceWAD();
+
+        // Get position details.
+        Position memory pos = positions[positionId];
+
+        // Check whether position exists.
+        require(pos.collateralPoints > 0, PositionDNE());
+
+        // Calculate real position collateral.
+        uint256 cPerPoint = lifetimeCollateralPerCollateralPoint;
+        uint256 posCollateral = cPerPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+
+        // Check whether requested collateral is less than real collateral.
+        require(collateral <= posCollateral, InsufficientCollateral());
+
+        // Check whether LTV is below 90%.
+        uint256 posDebt = lifetimeDebtPerDebtPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+        require(posDebt.divWad((posCollateral - collateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
+
+        // Calculate collateral points to be withdrawn.
+        uint256 withdrawnCollateralPoints = collateral.divWad(cPerPoint);
+
+        // Check whether TCR post-withdrawal is above 110%
+        require(
+            (totalSystemCollateralPoints - withdrawnCollateralPoints).mulWad(priceWAD).divWad(totalSystemDebtPoints)
+                > 1.1 ether,
+            TCROutOfBounds()
+        );
+
+        // Decrement position collateral points.
+        positions[positionId].collateralPoints -= withdrawnCollateralPoints;
+
+        // Decrement total system collateral points.
+        totalSystemCollateralPoints -= withdrawnCollateralPoints;
+
+        // Transfer collateral to recipient.
+        WRAPPED_NATIVE_TOKEN.transfer(recipient, collateral);
+
+        emit Supply(positionId, collateral);
     }
 
     function supplyCollateral(uint256 positionId, uint256 collateral, address onBehalf) external {
