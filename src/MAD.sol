@@ -23,7 +23,7 @@ contract MAD is ERC20 {
     error LTVInBounds();
     error TCROutOfBounds();
     error LTVOutOfBounds();
-    error InvalidOnBehalf();
+    error UnauthorizedCaller();
     error InsufficientCollateral();
 
     // =============================================================//
@@ -40,6 +40,8 @@ contract MAD is ERC20 {
 
     event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
 
+    event Liquidate(uint256 indexed id, address indexed liquidator, uint256 debt, uint256 collateral);
+
     event Stake(address indexed owner, uint256 amount);
 
     event Unstake(address indexed owner, uint256 amount);
@@ -51,8 +53,6 @@ contract MAD is ERC20 {
     // =============================================================//
 
     uint256 public constant MIN_COLLATERAL_VALUE_UNSCALED = 2000;
-
-    uint256 public constant REFUNDABLE_LIQUIDATION_RESERVE_SCALED = 200 ether;
 
     int256 public constant DECAY_RATE_SCALED = 0.89 ether;
     uint256 public constant BASE_FEE_RATE_BPS = 0.01 ether;
@@ -74,9 +74,10 @@ contract MAD is ERC20 {
     uint256 public lastFeeUpdateTimestamp;
 
     uint256 public totalSystemDebtPoints;
-    uint256 public lifetimeDebtPerDebtPoint;
     uint256 public totalSystemCollateralPoints;
-    uint256 public lifetimeCollateralPerCollateralPoint;
+
+    uint256 public debtPerDebtPoint;
+    uint256 public collateralPerCollateralPoint;
 
     uint256 public nextPositionId;
 
@@ -91,51 +92,62 @@ contract MAD is ERC20 {
     //                            MINT                              //
     // =============================================================//
 
-    function mint(uint256 collateral, uint256 borrow, address onBehalf, address recipient) external {
+    function mint(uint256 collateral, uint256 borrow, address recipient) external {
         // Get the native token price.
         uint256 priceWAD = _getPriceWAD();
 
         // Check whether provided collateral is GTE minimum collateral value. (e.g. 2000 USD)
         require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientCollateral());
 
-        // Check whether Total Collateral Ratio (TCR) is above 110%.
-        uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(lifetimeDebtPerDebtPoint);
-        uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(lifetimeCollateralPerCollateralPoint);
-
-        require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
-
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
         require(borrow.divWad(collateral.mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
-        // Check whether TCR post-debt is above 110%
-        require(
-            (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + borrow) > 1.1 ether,
-            TCROutOfBounds()
-        );
+        // Load system debt and collateral.
+        uint256 debtPerPoint = debtPerDebtPoint;
+        uint256 collateralPerPoint = collateralPerCollateralPoint;
+
+        // System has not been initalized with any debt or collateral.
+        if (debtPerPoint == 0 && collateralPerPoint == 0) {
+            // Initialize system debt and collateral per points to 1: In memory and storage
+            debtPerPoint = 1;
+            collateralPerPoint = 1;
+
+            debtPerDebtPoint = 1;
+            collateralPerCollateralPoint = 1;
+        } else {
+            // If the system is initialized, ensure the system is healthy pre and post borrow.
+            uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(debtPerPoint);
+            uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(collateralPerPoint);
+
+            // Check whether TCR pre-debt is above 110%
+            require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
+
+            // Check whether TCR post-borrow is above 110%
+            require(
+                (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + borrow) > 1.1 ether,
+                TCROutOfBounds()
+            );
+        }
 
         // Calculate full debt (borrow + fees)
-        uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow) + REFUNDABLE_LIQUIDATION_RESERVE_SCALED;
+        uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow);
 
-        // Calculate cancelled collateral and debt
-        uint256 cancelledDebt = lifetimeDebtPerDebtPoint.mulWad(borrow);
-        uint256 cancelledCollateral = lifetimeCollateralPerCollateralPoint.mulWad(collateral);
-
-        // Increment lifetime collateral and debt accrued per point.
-        lifetimeDebtPerDebtPoint++;
-        lifetimeCollateralPerCollateralPoint++;
+        // Calculate debt and collateral points.
+        uint256 posDebtPoints = debt.divWad(debtPerPoint);
+        uint256 posCollateralPoints = collateral.divWad(collateralPerPoint);
 
         // Update total system debt and collateral.
-        totalSystemDebtPoints += debt;
-        totalSystemCollateralPoints += collateral;
+        totalSystemDebtPoints += posDebtPoints;
+        totalSystemCollateralPoints += posCollateralPoints;
 
         // Get the next position ID.
         uint256 id = nextPositionId++;
 
         // Create and store position struct.
-        positions[id] = Position(id, onBehalf, debt, cancelledDebt, collateral, cancelledCollateral);
+        positions[id] = Position(id, msg.sender, posDebtPoints, posCollateralPoints);
 
         // Pull wrapped native tokens as collateral
-        WRAPPED_NATIVE_TOKEN.transferFrom(onBehalf, address(this), collateral);
+        WRAPPED_NATIVE_TOKEN.transferFrom(msg.sender, address(this), collateral);
 
         // Mint borrow amount of $MAD
         _mint(recipient, borrow);
@@ -155,16 +167,12 @@ contract MAD is ERC20 {
         // Check whether position exists.
         require(pos.collateralPoints > 0, PositionDNE());
 
-        // Check whether closing on behalf of position owner.
-        require(pos.owner == msg.sender, InvalidOnBehalf());
+        // Check whether closing position as position owner.
+        require(pos.owner == msg.sender, UnauthorizedCaller());
 
-        // Calculate real position collateral.
-        uint256 cPerPoint = lifetimeCollateralPerCollateralPoint;
-        uint256 posCollateral = cPerPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
-
-        // Calculate real position debt.
-        uint256 dPerPoint = lifetimeDebtPerDebtPoint;
-        uint256 posDebt = dPerPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+        // Calculate real position debt and collateral.
+        uint256 posDebt = debtPerDebtPoint.mulWad(pos.debtPoints);
+        uint256 posCollateral = collateralPerCollateralPoint.mulWad(pos.collateralPoints);
 
         // Check whether LTV is below 90%.
         require(posDebt.divWad((posCollateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
@@ -180,7 +188,7 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(recipient, posCollateral);
 
         // Burn debt amount of $MAD from system reserve.
-        _burn(msg.sender, posDebt - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+        _burn(msg.sender, posDebt);
 
         emit Close(positionId, msg.sender, posDebt, posCollateral);
     }
@@ -199,26 +207,32 @@ contract MAD is ERC20 {
         // Check whether position exists.
         require(pos.collateralPoints > 0, PositionDNE());
 
+        // Check whether closing position as position owner.
+        require(pos.owner == msg.sender, UnauthorizedCaller());
+
         // Calculate real position collateral.
-        uint256 cPerPoint = lifetimeCollateralPerCollateralPoint;
-        uint256 posCollateral = cPerPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+        uint256 collateralPerPoint = collateralPerCollateralPoint;
+        uint256 posCollateral = collateralPerPoint.mulWad(pos.collateralPoints);
 
-        // Check whether requested collateral is less than real collateral.
-        require(collateral <= posCollateral, InsufficientCollateral());
+        // Check whether withdrawn collateral is less than position collateral.
+        require(collateral < posCollateral, InsufficientCollateral());
 
-        // Check whether LTV is below 90%.
-        uint256 posDebt = lifetimeDebtPerDebtPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+        // Check whether post-withdraw LTV is below 90%.
+        uint256 debtPerPoint = debtPerDebtPoint;
+        uint256 posDebt = debtPerPoint.mulWad(pos.debtPoints);
+
         require(posDebt.divWad((posCollateral - collateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
-        // Calculate collateral points to be withdrawn.
-        uint256 withdrawnCollateralPoints = collateral.divWad(cPerPoint);
-
         // Check whether TCR post-withdrawal is above 110%
+        uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(debtPerPoint);
+        uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(collateralPerPoint);
+
         require(
-            (totalSystemCollateralPoints - withdrawnCollateralPoints).mulWad(priceWAD).divWad(totalSystemDebtPoints)
-                > 1.1 ether,
-            TCROutOfBounds()
+            (totalSystemCollateral - collateral).mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds()
         );
+
+        // Calculate collateral points to be withdrawn.
+        uint256 withdrawnCollateralPoints = collateral.divWad(collateralPerPoint);
 
         // Decrement position collateral points.
         positions[positionId].collateralPoints -= withdrawnCollateralPoints;
@@ -232,28 +246,24 @@ contract MAD is ERC20 {
         emit Supply(positionId, collateral);
     }
 
-    function supplyCollateral(uint256 positionId, uint256 collateral, address onBehalf) external {
+    function supplyCollateral(uint256 positionId, uint256 collateral) external {
         // Get position details.
         Position memory pos = positions[positionId];
 
         // Check whether position exists.
         require(pos.collateralPoints > 0, PositionDNE());
 
-        // Calculate cancelled collateral and debt
-        uint256 cancelledCollateral = lifetimeCollateralPerCollateralPoint.mulWad(collateral);
+        // Calculate collateral points.
+        uint256 suppliedCollateralPoints = collateral.divWad(collateralPerCollateralPoint);
 
-        // Increment lifetime collateral accrued per point.
-        lifetimeCollateralPerCollateralPoint++;
-
-        // Update total system collateral.
-        totalSystemCollateralPoints += collateral;
+        // Update total system collateral points.
+        totalSystemCollateralPoints += suppliedCollateralPoints;
 
         // Update position's collateral points.
-        positions[positionId].collateralPoints += collateral;
-        positions[positionId].cancelledCollateral += cancelledCollateral;
+        positions[positionId].collateralPoints += suppliedCollateralPoints;
 
         // Pull wrapped native tokens as collateral
-        WRAPPED_NATIVE_TOKEN.transferFrom(onBehalf, address(this), collateral);
+        WRAPPED_NATIVE_TOKEN.transferFrom(msg.sender, address(this), collateral);
 
         emit Supply(positionId, collateral);
     }
@@ -262,7 +272,7 @@ contract MAD is ERC20 {
     //                            REDEEM                            //
     // =============================================================//
 
-    function redeem(uint256 amount, address recipient, address onBehalf) external {
+    function redeem(uint256 amount, address recipient) external {
         // Get the native token price.
         uint256 priceWAD = _getPriceWAD();
 
@@ -273,15 +283,15 @@ contract MAD is ERC20 {
         uint256 nativeTokenValue = (amount - fees).divWad(priceWAD);
 
         // Transfer $MAD fees to the system.
-        _transfer(onBehalf, address(this), fees);
+        _transfer(msg.sender, address(this), fees);
 
         // Burn redeemed $MAD.
-        _burn(onBehalf, (amount - fees));
+        _burn(msg.sender, (amount - fees));
 
         // Transfer native tokens to recipient.
         WRAPPED_NATIVE_TOKEN.transfer(recipient, nativeTokenValue);
 
-        emit Redeem(onBehalf, amount, nativeTokenValue);
+        emit Redeem(msg.sender, amount, nativeTokenValue);
     }
 
     // =============================================================//
@@ -299,79 +309,92 @@ contract MAD is ERC20 {
         require(pos.collateralPoints > 0, PositionDNE());
 
         // Calculate LTV.
-        uint256 posDebt = lifetimeDebtPerDebtPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
-        uint256 posCollateral =
-            lifetimeCollateralPerCollateralPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+        uint256 debtPerPoint = debtPerDebtPoint;
+        uint256 collateralPerPoint = collateralPerCollateralPoint;
+
+        uint256 posDebt = debtPerPoint.mulWad(pos.debtPoints);
+        uint256 posCollateral = collateralPerPoint.mulWad(pos.collateralPoints);
 
         // Check whether LTV is above 90%.
         require(posDebt.divWad(posCollateral.mulWad(priceWAD)) >= 0.9 ether, LTVInBounds());
 
         // Calculate liquidation reward in collateral.
-        uint256 liquidationCollateralReward = posCollateral.mulWad(BASE_FEE_RATE_BPS);
+        uint256 liquidationReward = posCollateral.mulWad(BASE_FEE_RATE_BPS);
 
-        // Cover as much debt as possible from insurance reserve.
+        /**
+         *  Cover as much debt as possible from insurance reserve.
+         *
+         *  We use system's token balance instead of `totalStaked` to allow for permissionless emergency top-ups
+         *  to allow for liquidations to be insured rather than socialize the liquidation risk.
+         */
         uint256 systemBalance = balanceOf(address(this));
-        uint256 insured = systemBalance > posDebt ? posDebt : systemBalance;
 
-        if (insured > 0) {
-            // Transfer liquidation reserve from system to recipient.
-            transfer(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+        uint256 debtToBurn = posDebt;
+        uint256 collateralToRelease = posCollateral - liquidationReward;
 
-            // Burn remainder debt amount of $MAD from system reserve.
-            _burn(address(this), insured - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+        if (systemBalance > 0) {
+            // Burn as much debt as possible from insurance reserve.
+            uint256 burnAmount = systemBalance < debtToBurn ? systemBalance : debtToBurn;
+            _burn(address(this), burnAmount);
 
             // Compensate system with collateral.
-            lifetimeRewardPerMAD += (posCollateral - liquidationCollateralReward).divWadUp(totalStaked);
-        } else {
+            uint256 totalReward = (collateralToRelease).mulWad(burnAmount.divWadUp(debtToBurn));
+            lifetimeRewardPerMAD += (totalReward).divWadUp(totalStaked);
+
+            // Update remainder debt amount.
+            debtToBurn -= burnAmount;
+
+            // Update remainder collateral to release.
+            collateralToRelease -= totalReward;
+        }
+
+        if (debtToBurn > 0) {
             // Distribute debt across positions.
-            lifetimeDebtPerDebtPoint += posDebt.divWad(totalSystemDebtPoints);
+            debtPerDebtPoint += debtToBurn.divWad(totalSystemDebtPoints);
 
             // Distribute collateral across positions.
-            lifetimeCollateralPerCollateralPoint +=
-                (posCollateral - liquidationCollateralReward).divWad(totalSystemCollateralPoints);
-
-            // Mint liquidation reserve from system to recipient.
-            _mint(recipient, REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+            collateralPerCollateralPoint += collateralToRelease.divWad(totalSystemCollateralPoints);
         }
 
         // Transfer liquidation reward in collateral to recipient.
-        WRAPPED_NATIVE_TOKEN.transfer(recipient, liquidationCollateralReward);
+        WRAPPED_NATIVE_TOKEN.transfer(recipient, liquidationReward);
 
         // Delete position.
         delete positions[positionId];
+
+        emit Liquidate(positionId, recipient, posDebt, posCollateral);
     }
 
     // =============================================================//
     //                            STAKE                             //
     // =============================================================//
 
-    function stake(uint256 amount, address onBehalf) external {
+    function stake(uint256 amount) external {
         // Update staker reward debt with rewards missed by amount being staked just now.
-        rewardDebt[onBehalf] = lifetimeRewardPerMAD.mulWadUp(amount);
+        rewardDebt[msg.sender] += lifetimeRewardPerMAD.mulWadUp(amount);
 
         // Update total staked amount.
         totalStaked += amount;
 
         // Update staker's stake amount.
-        staked[onBehalf] += amount;
+        staked[msg.sender] += amount;
 
         // Transfer $MAD stake to the system.
-        transferFrom(onBehalf, address(this), amount);
+        _transfer(msg.sender, address(this), amount);
 
-        emit Stake(onBehalf, amount);
+        emit Stake(msg.sender, amount);
     }
 
-    function unstake(address onBehalf) external {
+    function unstake() external {
         // Get staker's stake amount and reward debt.
-        uint256 stakeAmount = staked[onBehalf];
-        uint256 debt = rewardDebt[onBehalf];
+        uint256 stakeAmount = staked[msg.sender];
+        uint256 debt = rewardDebt[msg.sender];
 
         // Calculate rewards earned by staker.
-        uint256 rewardPerMAD = lifetimeRewardPerMAD;
-        uint256 totalRewards = rewardPerMAD.mulWad(stakeAmount) - debt;
+        uint256 totalRewards = lifetimeRewardPerMAD.mulWad(stakeAmount) - debt;
 
         // Update staker's reward debt.
-        rewardDebt[onBehalf] += totalRewards;
+        rewardDebt[msg.sender] += totalRewards;
 
         // Calculate withdraw amount.
         uint256 withdrawAmount = balanceOf(address(this)).mulWad(stakeAmount).divWad(totalStaked);
@@ -380,33 +403,32 @@ contract MAD is ERC20 {
         totalStaked -= stakeAmount;
 
         // Reset staker's stake amount.
-        delete staked[onBehalf];
+        delete staked[msg.sender];
 
         // Transfer rewards to staker.
-        WRAPPED_NATIVE_TOKEN.transfer(onBehalf, totalRewards);
+        WRAPPED_NATIVE_TOKEN.transfer(msg.sender, totalRewards);
 
         // Transfer $MAD stake to the staker.
-        _transfer(address(this), onBehalf, withdrawAmount);
+        _transfer(address(this), msg.sender, withdrawAmount);
 
-        emit Unstake(onBehalf, withdrawAmount);
+        emit Unstake(msg.sender, withdrawAmount);
     }
 
-    function claimRewards(address onBehalf) external {
+    function claimRewards() external {
         // Get staker's stake amount and reward debt.
-        uint256 stakeAmount = staked[onBehalf];
-        uint256 debt = rewardDebt[onBehalf];
+        uint256 stakeAmount = staked[msg.sender];
+        uint256 debt = rewardDebt[msg.sender];
 
         // Calculate rewards earned by staker.
-        uint256 rewardPerMAD = lifetimeRewardPerMAD;
-        uint256 totalRewards = rewardPerMAD.mulWad(stakeAmount) - debt;
+        uint256 totalRewards = lifetimeRewardPerMAD.mulWad(stakeAmount) - debt;
 
         // Update staker's reward debt.
-        rewardDebt[onBehalf] += totalRewards;
+        rewardDebt[msg.sender] += totalRewards;
 
         // Transfer rewards to staker.
-        WRAPPED_NATIVE_TOKEN.transfer(onBehalf, totalRewards);
+        WRAPPED_NATIVE_TOKEN.transfer(msg.sender, totalRewards);
 
-        emit ClaimRewards(onBehalf, totalRewards);
+        emit ClaimRewards(msg.sender, totalRewards);
     }
 
     // =============================================================//

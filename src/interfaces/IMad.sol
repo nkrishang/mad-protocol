@@ -9,8 +9,8 @@ pragma solidity ^0.8.28;
  *      all positions during redistribution events.
  *
  *      For each position:
- *      - Actual debt = (debt_points * lifetime_debt_per_point) - cancelled_debt
- *      - Actual collateral = (collateral_points * lifetime_collateral_per_point) - cancelled_collateral
+ *      - Actual debt = (debt_points * lifetime_debt_per_point)
+ *      - Actual collateral = (collateral_points * lifetime_collateral_per_point)
  *
  *      When a position is liquidated:
  *      1. The system attempts to use the insurance reserve to cover the position's debt and pay
@@ -30,17 +30,13 @@ pragma solidity ^0.8.28;
  * @param id                  Unique position identifier
  * @param owner               Address of the position owner
  * @param debtPoints          Position's debt points (includes borrowed $MAD, liquidation reserve, and borrow fee)
- * @param cancelledDebt       Debt offset for positions created after system initialization
  * @param collateralPoints    Position's collateral points
- * @param cancelledCollateral Collateral offset for positions created after system initialization
  */
 struct Position {
     uint256 id;
     address owner;
     uint256 debtPoints;
-    uint256 cancelledDebt;
     uint256 collateralPoints;
-    uint256 cancelledCollateral;
 }
 
 interface IMad {}
