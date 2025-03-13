@@ -7,6 +7,13 @@ import {WETH} from "lib/solady/src/tokens/WETH.sol";
 import {ERC20} from "lib/solady/src/tokens/ERC20.sol";
 import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
 
+/**
+ * @title $MAD Stablecoin Protocol (Mint Against Deposit)
+ * @author github.com/nkrishang
+ * @notice Immutable, governance-less, singleton-contract protocol for minting stablecoins fully backed by native tokens.
+ *
+ * Inspired by Morpho (https://github.com/morpho-org/morpho-blue) and Liquity (https://github.com/liquity/dev).
+ */
 contract MAD is ERC20 {
     // =============================================================//
     //                             LIB                              //
@@ -30,22 +37,17 @@ contract MAD is ERC20 {
     //                            EVENTS                            //
     // =============================================================//
 
+    event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
     event Mint(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
-
-    event Supply(uint256 indexed id, uint256 collateral);
-
-    event Withdraw(uint256 indexed id, uint256 collateral);
-
     event Close(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
-    event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
+    event Supply(uint256 indexed id, uint256 collateral);
+    event Withdraw(uint256 indexed id, uint256 collateral);
 
     event Liquidate(uint256 indexed id, address indexed liquidator, uint256 debt, uint256 collateral);
 
     event Stake(address indexed owner, uint256 amount);
-
     event Unstake(address indexed owner, uint256 amount);
-
     event ClaimRewards(address indexed owner, uint256 amount);
 
     // =============================================================//
