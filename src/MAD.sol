@@ -31,6 +31,8 @@ contract MAD is ERC20 {
 
     event Mint(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
+    event Supply(uint256 indexed id, uint256 collateral);
+
     event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
 
     event Stake(address indexed owner, uint256 amount);
@@ -134,6 +136,32 @@ contract MAD is ERC20 {
 
         // Mint borrow amount of $MAD
         _mint(recipient, borrow);
+    }
+
+    function supplyCollateral(uint256 positionId, uint256 collateral, address onBehalf) external {
+        // Get position details.
+        Position memory pos = positions[positionId];
+
+        // Check whether position exists.
+        require(pos.collateralPoints > 0, PositionDNE());
+
+        // Calculate cancelled collateral and debt
+        uint256 cancelledCollateral = lifetimeCollateralPerCollateralPoint.mulWad(collateral);
+
+        // Increment lifetime collateral accrued per point.
+        lifetimeCollateralPerCollateralPoint++;
+
+        // Update total system collateral.
+        totalSystemCollateralPoints += collateral;
+
+        // Update position's collateral points.
+        positions[positionId].collateralPoints += collateral;
+        positions[positionId].cancelledCollateral += cancelledCollateral;
+
+        // Pull wrapped native tokens as collateral
+        WRAPPED_NATIVE_TOKEN.transferFrom(onBehalf, address(this), collateral);
+
+        emit Supply(positionId, collateral);
     }
 
     // =============================================================//
