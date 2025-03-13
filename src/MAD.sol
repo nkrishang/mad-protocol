@@ -23,6 +23,7 @@ contract MAD is ERC20 {
     error LTVInBounds();
     error TCROutOfBounds();
     error LTVOutOfBounds();
+    error InvalidOnBehalf();
     error InsufficientCollateral();
 
     // =============================================================//
@@ -34,6 +35,8 @@ contract MAD is ERC20 {
     event Supply(uint256 indexed id, uint256 collateral);
 
     event Withdraw(uint256 indexed id, uint256 collateral);
+
+    event Close(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
     event Redeem(address indexed owner, uint256 burned, uint256 redeemed);
 
@@ -136,6 +139,50 @@ contract MAD is ERC20 {
 
         // Mint borrow amount of $MAD
         _mint(recipient, borrow);
+    }
+
+    // =============================================================//
+    //                           CLOSE                              //
+    // =============================================================//
+
+    function close(uint256 positionId, address recipient) external {
+        // Get the native token price.
+        uint256 priceWAD = _getPriceWAD();
+
+        // Get position details.
+        Position memory pos = positions[positionId];
+
+        // Check whether position exists.
+        require(pos.collateralPoints > 0, PositionDNE());
+
+        // Check whether closing on behalf of position owner.
+        require(pos.owner == msg.sender, InvalidOnBehalf());
+
+        // Calculate real position collateral.
+        uint256 cPerPoint = lifetimeCollateralPerCollateralPoint;
+        uint256 posCollateral = cPerPoint.mulWad(pos.collateralPoints) - pos.cancelledCollateral;
+
+        // Calculate real position debt.
+        uint256 dPerPoint = lifetimeDebtPerDebtPoint;
+        uint256 posDebt = dPerPoint.mulWad(pos.debtPoints) - pos.cancelledDebt;
+
+        // Check whether LTV is below 90%.
+        require(posDebt.divWad((posCollateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
+
+        // Delete position.
+        delete positions[positionId];
+
+        // Decrement total system collateral and debt points.
+        totalSystemDebtPoints -= pos.debtPoints;
+        totalSystemCollateralPoints -= pos.collateralPoints;
+
+        // Transfer collateral to recipient.
+        WRAPPED_NATIVE_TOKEN.transfer(recipient, posCollateral);
+
+        // Burn debt amount of $MAD from system reserve.
+        _burn(msg.sender, posDebt - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
+
+        emit Close(positionId, msg.sender, posDebt, posCollateral);
     }
 
     // =============================================================//
