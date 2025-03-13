@@ -76,8 +76,6 @@ contract MAD is ERC20 {
     uint256 public nextPositionId;
 
     uint256 public totalStaked;
-    uint256 public unpaidRewardPool;
-    uint256 public unaccountedRewardPool;
     uint256 public lifetimeRewardPerMAD;
 
     mapping(uint256 id => Position data) public positions;
@@ -227,7 +225,7 @@ contract MAD is ERC20 {
             _burn(address(this), insured - REFUNDABLE_LIQUIDATION_RESERVE_SCALED);
 
             // Compensate system with collateral.
-            unaccountedRewardPool += (posCollateral - liquidationCollateralReward);
+            lifetimeRewardPerMAD += (posCollateral - liquidationCollateralReward).divWadUp(totalStaked);
         } else {
             // Distribute debt across positions.
             lifetimeDebtPerDebtPoint += posDebt.divWad(totalSystemDebtPoints);
@@ -255,9 +253,6 @@ contract MAD is ERC20 {
         // Update staker reward debt with rewards missed by amount being staked just now.
         rewardDebt[onBehalf] = lifetimeRewardPerMAD.mulWadUp(amount);
 
-        // Accrue rewards and update lifetime reward per $MAD.
-        _accountRewards();
-
         // Update total staked amount.
         totalStaked += amount;
 
@@ -271,9 +266,6 @@ contract MAD is ERC20 {
     }
 
     function unstake(address onBehalf) external {
-        // Accrue rewards and update lifetime reward per $MAD.
-        _accountRewards();
-
         // Get staker's stake amount and reward debt.
         uint256 stakeAmount = staked[onBehalf];
         uint256 debt = rewardDebt[onBehalf];
@@ -304,9 +296,6 @@ contract MAD is ERC20 {
     }
 
     function claimRewards(address onBehalf) external {
-        // Accrue rewards and update lifetime reward per $MAD.
-        _accountRewards();
-
         // Get staker's stake amount and reward debt.
         uint256 stakeAmount = staked[onBehalf];
         uint256 debt = rewardDebt[onBehalf];
@@ -322,25 +311,6 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(onBehalf, totalRewards);
 
         emit ClaimRewards(onBehalf, totalRewards);
-    }
-
-    function _accountRewards() private {
-        // Get unpaid and unaccounted reward pools, and current native token balance.
-        uint256 unpaidPool = unpaidRewardPool;
-        uint256 unaccountedPool = unaccountedRewardPool;
-        uint256 currentBalance = WRAPPED_NATIVE_TOKEN.balanceOf(address(this));
-
-        // Add any excess native tokens to the unpaid reward pool.
-        if (currentBalance > (unpaidPool + unaccountedPool)) {
-            unpaidPool += currentBalance - (unpaidPool + unaccountedPool);
-        }
-
-        // Update rewards earned per 1 staked $MAD with 1 token's stake in unaccounted rewards.
-        lifetimeRewardPerMAD += unaccountedPool.divWadUp(totalStaked);
-
-        // Move unaccounted rewards to unpaid reward pool.
-        unpaidRewardPool += unaccountedPool;
-        delete unaccountedRewardPool;
     }
 
     // =============================================================//
