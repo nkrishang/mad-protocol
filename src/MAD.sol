@@ -122,8 +122,8 @@ contract MAD is ERC20 {
         lifetimeCollateralPerCollateralPoint++;
 
         // Update total system debt and collateral.
-        totalSystemDebt += debt;
-        totalSystemCollateral += collateral;
+        totalSystemDebtPoints += debt;
+        totalSystemCollateralPoints += collateral;
 
         // Get the next position ID.
         uint256 id = nextPositionId++;
