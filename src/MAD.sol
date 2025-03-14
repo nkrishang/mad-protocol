@@ -323,12 +323,7 @@ contract MAD is ERC20 {
         // Calculate liquidation reward in collateral.
         uint256 liquidationReward = posCollateral.mulWad(BASE_FEE_RATE_BPS);
 
-        /**
-         *  Cover as much debt as possible from insurance reserve.
-         *
-         *  We use system's token balance instead of `totalStaked` to allow for permissionless emergency top-ups
-         *  to allow for liquidations to be insured rather than socialize the liquidation risk.
-         */
+        // Cover as much debt as possible from insurance reserve.
         uint256 systemBalance = balanceOf(address(this));
 
         uint256 debtToBurn = posDebt;
