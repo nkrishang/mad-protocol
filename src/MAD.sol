@@ -91,6 +91,15 @@ contract MAD is ERC20 {
     mapping(address staker => uint256 rewardDebt) public rewardDebt;
 
     // =============================================================//
+    //                         CONSTRUCTOR                          //
+    // =============================================================//
+
+    constructor(IOracle oracle, WETH wrapper) {
+        PRICE_ORACLE = oracle;
+        WRAPPED_NATIVE_TOKEN = wrapper;
+    }
+
+    // =============================================================//
     //                            MINT                              //
     // =============================================================//
 
