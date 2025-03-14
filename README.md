@@ -113,3 +113,7 @@ This approach enables gas-efficient redistribution without iterating through all
 ### Thresholds
 
 If the Total Collateral Ratio (TCR) of the protocol (i.e. total protocol held collateral / total circulating $MAD) drops below 110%, the protocol prohibits any activity (e.g. borrowing or withdrawing collateral) that would further reduce the TCR.
+
+## Feedback
+
+Please open an issue or PR with any feedback, or contact me on X ([@MonkeyMeaning](https://x.com/MonkeyMeaning))
