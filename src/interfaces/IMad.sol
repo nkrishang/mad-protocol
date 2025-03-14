@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /**
- * @dev Position struct: Tracks a user's borrowed stablecoins ($MAD) against deposited collateral.
+ * @dev Position struct: Tracks a user's borrowed tokens ($MAD) against deposited collateral.
  *
  *      The protocol uses a point-based accounting system to efficiently handle liquidations and
  *      potential socialization of losses. This avoids expensive gas costs of iterating through
@@ -41,14 +41,14 @@ struct Position {
 
 interface IMADBase {
     /**
-     * @notice Mint new $MAD stablecoins by depositing collateral and borrowing against it.
+     * @notice Mint new $MAD tokens by depositing collateral and borrowing against it.
      *
      * @dev The collateral is denominated in wrapped native token (e.g. WETH). The caller (msg.sender) must approve
      *      the contract to transfer `collateral` amount of native token before calling this function.
      *
      *      The `mint` operation checks the following conditions:
      *          - Checks that the caller is providing at least min. collateral value of 2000 USD worth of native tokens.
-     *          - Checks that the caller is not borrowing more than 90% of the collateral value in $MAD stablecoins.
+     *          - Checks that the caller is not borrowing more than 90% of the collateral value in $MAD tokens.
      *          - Checks that the Total Collateral Ratio (TCR = system_collateral / system_debt) is above 110% before and
      *            after the debt created by the `mint` operation.
      *
@@ -58,8 +58,8 @@ interface IMADBase {
      *      must be above 110%.
      *
      * @param collateral The amount of native token deposit to borrow against.
-     * @param borrow The amount of $MAD stablecoins to borrow.
-     * @param recipient The recipient of the minted $MAD stablecoins.
+     * @param borrow The amount of $MAD tokens to borrow.
+     * @param recipient The recipient of the minted $MAD tokens.
      */
     function mint(uint256 collateral, uint256 borrow, address recipient) external;
 
@@ -114,7 +114,7 @@ interface IMADBase {
     function supplyCollateral(uint256 positionId, uint256 collateral) external;
 
     /**
-     * @notice Redeem $MAD stablecoins in exchange for an equivalent USD value in native tokens.
+     * @notice Redeem $MAD tokens in exchange for an equivalent USD value in native tokens.
      *
      * @dev The caller (msg.sender) must own at least `amount` $MAD tokens.
      *
@@ -123,7 +123,7 @@ interface IMADBase {
      *
      *      The caller is charged a redemption fee in $MAD, which is transferred to the contract.
      *
-     * @param amount The amount of $MAD stablecoin to redeem.
+     * @param amount The amount of $MAD token to redeem.
      * @param recipient The recipient of the native tokens.
      */
     function redeem(uint256 amount, address recipient) external;
