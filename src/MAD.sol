@@ -390,14 +390,14 @@ contract MAD is ERC20 {
         // Calculate rewards earned by staker.
         uint256 totalRewards = lifetimeRewardPerMAD.mulWad(stakeAmount) - debt;
 
-        // Update staker's reward debt.
-        rewardDebt[msg.sender] += totalRewards;
-
         // Calculate withdraw amount.
         uint256 withdrawAmount = balanceOf(address(this)).mulWad(stakeAmount).divWad(totalStaked);
 
         // Update total staked amount.
         totalStaked -= stakeAmount;
+
+        // Reset staker's reward debt.
+        delete rewardDebt[msg.sender];
 
         // Reset staker's stake amount.
         delete staked[msg.sender];
