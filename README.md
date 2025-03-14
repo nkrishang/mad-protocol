@@ -4,6 +4,8 @@ $MAD (**Mint Against Deposit**) Stablecoin Protocol is an immutable, governance-
 
 ## Development
 
+The entire protocol is written in a single <500 LOC file `MAD.sol`. The interface file `IMAD.sol` is thoroughly annotated, and the protocol is documented in the README as well.
+
 ### Install
 
 This repo is a foundry project. Refer to the foundry documentation for CLI installation instructions: https://book.getfoundry.sh/
