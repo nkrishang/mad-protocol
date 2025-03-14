@@ -167,7 +167,7 @@ contract MAD is ERC20 {
         Position memory pos = positions[positionId];
 
         // Check whether position exists.
-        require(pos.collateralPoints > 0, PositionDNE());
+        require(pos.owner != address(0), PositionDNE());
 
         // Check whether closing position as position owner.
         require(pos.owner == msg.sender, UnauthorizedCaller());
@@ -207,7 +207,7 @@ contract MAD is ERC20 {
         Position memory pos = positions[positionId];
 
         // Check whether position exists.
-        require(pos.collateralPoints > 0, PositionDNE());
+        require(pos.owner != address(0), PositionDNE());
 
         // Check whether closing position as position owner.
         require(pos.owner == msg.sender, UnauthorizedCaller());
@@ -253,7 +253,7 @@ contract MAD is ERC20 {
         Position memory pos = positions[positionId];
 
         // Check whether position exists.
-        require(pos.collateralPoints > 0, PositionDNE());
+        require(pos.owner != address(0), PositionDNE());
 
         // Calculate collateral points.
         uint256 suppliedCollateralPoints = collateral.divWad(collateralPerCollateralPoint);
@@ -308,7 +308,7 @@ contract MAD is ERC20 {
         Position memory pos = positions[positionId];
 
         // Check whether position exists.
-        require(pos.collateralPoints > 0, PositionDNE());
+        require(pos.owner != address(0), PositionDNE());
 
         // Calculate LTV.
         uint256 debtPerPoint = debtPerDebtPoint;
