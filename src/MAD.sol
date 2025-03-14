@@ -101,8 +101,11 @@ contract MAD is ERC20 {
         // Check whether provided collateral is GTE minimum collateral value. (e.g. 2000 USD)
         require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientCollateral());
 
+        // Calculate full debt (borrow + fees)
+        uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow);
+
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
-        require(borrow.divWad(collateral.mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
+        require(debt.divWad(collateral.mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
         // Load system debt and collateral.
         uint256 debtPerPoint = debtPerDebtPoint;
@@ -126,13 +129,10 @@ contract MAD is ERC20 {
 
             // Check whether TCR post-borrow is above 110%
             require(
-                (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + borrow) > 1.1 ether,
+                (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + debt) > 1.1 ether,
                 TCROutOfBounds()
             );
         }
-
-        // Calculate full debt (borrow + fees)
-        uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow);
 
         // Calculate debt and collateral points.
         uint256 posDebtPoints = debt.divWad(debtPerPoint);
