@@ -144,8 +144,8 @@ contract MAD is ERC20 {
         }
 
         // Calculate debt and collateral points.
-        uint256 posDebtPoints = debt.divWad(debtPerPoint);
-        uint256 posCollateralPoints = collateral.divWad(collateralPerPoint);
+        uint256 posDebtPoints = debt.divWad(debtPerPoint * 1 ether);
+        uint256 posCollateralPoints = collateral.divWad(collateralPerPoint * 1 ether);
 
         // Update total system debt and collateral.
         totalSystemDebtPoints += posDebtPoints;
