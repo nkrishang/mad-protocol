@@ -111,7 +111,7 @@ contract MAD is ERC20 {
         require(collateral.mulWad(priceWAD) >= MIN_COLLATERAL_VALUE_UNSCALED * 1 ether, InsufficientCollateral());
 
         // Calculate full debt (borrow + fees)
-        uint256 debt = borrow + _getFeeRateWAD(0).mulWad(borrow);
+        uint256 debt = borrow + _getFeeRateWAD(0).mulWadUp(borrow);
 
         // Check whether LTV ( deb/collateral ) is less than max LTV 90%
         require(debt.divWad(collateral.mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
