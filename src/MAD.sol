@@ -442,7 +442,7 @@ contract MAD is ERC20 {
     // =============================================================//
 
     function _getPriceWAD() private view returns (uint256) {
-        return PRICE_ORACLE.price() * (1 ether / PRICE_ORACLE.scale());
+        return (PRICE_ORACLE.price() * 1 ether) / (10 ** PRICE_ORACLE.scale());
     }
 
     // =============================================================//
