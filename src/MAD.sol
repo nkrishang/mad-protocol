@@ -56,7 +56,7 @@ contract MAD is ERC20 {
 
     uint256 public constant MIN_COLLATERAL_VALUE_UNSCALED = 2000;
 
-    int256 public constant DECAY_RATE_SCALED = 0.89 ether;
+    uint256 public constant DECAY_RATE_SCALED = 0.89 ether;
     uint256 public constant BASE_FEE_RATE_BPS = 0.01 ether;
     uint256 public constant MAX_VARIABLE_FEE_RATE_BPS = 0.04 ether;
 
@@ -452,7 +452,7 @@ contract MAD is ERC20 {
     function _getFeeRateWAD(uint256 redeemAmount) private returns (uint256) {
         // Variable fee rate is calculated as `r(n) = r(n-1) * (decay ^ hoursElapsed)`.
         uint256 currentVariableRate = variableFeeRate.mulWadUp(
-            uint256(DECAY_RATE_SCALED.powWad(int256((block.timestamp - lastFeeUpdateTimestamp) / 1 hours)))
+            uint256(int256(DECAY_RATE_SCALED).powWad(int256((block.timestamp - lastFeeUpdateTimestamp) / 1 hours)))
         );
 
         if (redeemAmount > 0) {

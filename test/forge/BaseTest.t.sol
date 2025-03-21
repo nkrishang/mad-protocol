@@ -14,7 +14,8 @@ contract BaseTest is Test {
 
     // Contract Constants
     uint256 internal constant MIN_COLLATERAL_VALUE_UNSCALED = 2000;
-    int256 internal constant DECAY_RATE_SCALED = 0.89 ether;
+
+    uint256 internal constant DECAY_RATE_SCALED = 0.89 ether;
     uint256 internal constant BASE_FEE_RATE_BPS = 0.01 ether;
     uint256 internal constant MAX_VARIABLE_FEE_RATE_BPS = 0.04 ether;
 
