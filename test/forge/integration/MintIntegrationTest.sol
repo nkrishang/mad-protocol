@@ -74,7 +74,7 @@ contract MintIntegrationTest is BaseTest {
         assertEq(mad.nextPositionId(), positionId + 1);
     }
 
-    function testMintPreDebtTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
+    function testMintTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
         crashedPrice = bound(crashedPrice, 1, (ORACLE_MIN_PRICE * 9) / 10);
         collateral = bound(collateral, _minimumCollateral(crashedPrice), MAX_COLLATERAL_AMOUNT);
 
@@ -101,8 +101,6 @@ contract MintIntegrationTest is BaseTest {
         vm.expectRevert(MAD.TCROutOfBounds.selector);
         mad.mint(collateral, newBorrow, RECEIVER);
     }
-
-    function testMintPostDebtTCROutOfBounds() public {}
 
     function testMintAfterSystemInitialized() public {}
 }

@@ -135,12 +135,6 @@ contract MAD is ERC20 {
 
             // Check whether TCR pre-debt is above 110%
             require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
-
-            // Check whether TCR post-borrow is above 110%
-            require(
-                (totalSystemCollateral + collateral).mulWad(priceWAD).divWad(totalSystemDebt + debt) > 1.1 ether,
-                TCROutOfBounds()
-            );
         }
 
         // Calculate debt and collateral points.
