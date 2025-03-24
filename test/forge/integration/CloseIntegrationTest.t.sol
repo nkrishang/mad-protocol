@@ -12,12 +12,12 @@ contract CloseIntegrationTest is BaseTest {
 
     event Close(uint256 indexed id, address indexed owner, uint256 debt, uint256 collateral);
 
-    function testClosePoistionDNE(uint256 id) public {
+    function testCloseRevertPoistionDNE(uint256 id) public {
         vm.expectRevert(MAD.PositionDNE.selector);
         mad.close(id, RECEIVER);
     }
 
-    function testCloseUnauthorizedCaller(address caller) public {
+    function testCloseRevertUnauthorizedCaller(address caller) public {
         vm.assume(caller != USER);
 
         uint256 collateral = _minimumCollateral(ORACLE_MIN_PRICE);
@@ -37,7 +37,7 @@ contract CloseIntegrationTest is BaseTest {
         mad.close(positionId, RECEIVER);
     }
 
-    function testCloseLTVOutOfBounds(uint256 collateral, uint256 crashedPrice) public {
+    function testCloseRevertLTVOutOfBounds(uint256 collateral, uint256 crashedPrice) public {
         crashedPrice = bound(crashedPrice, 1, (ORACLE_MIN_PRICE * 9) / 10);
         collateral = bound(collateral, _minimumCollateral(ORACLE_MIN_PRICE), MAX_COLLATERAL_AMOUNT);
         

@@ -13,14 +13,14 @@ contract MintIntegrationTest is BaseTest {
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
 
-    function testMintInsufficientCollateral(uint256 collateral, uint256 borrow) public {
+    function testRevertMintInsufficientCollateral(uint256 collateral, uint256 borrow) public {
         collateral = bound(collateral, 1, _minimumCollateral(ORACLE_MAX_PRICE));
 
         vm.expectRevert(MAD.InsufficientCollateral.selector);
         mad.mint(collateral, borrow, RECEIVER);
     }
 
-    function testMintLTVOutOfBounds(uint256 collateral, uint256 borrow) public {
+    function testMintRevertLTVOutOfBounds(uint256 collateral, uint256 borrow) public {
         collateral = bound(collateral, _minimumCollateral(ORACLE_MIN_PRICE), MAX_COLLATERAL_AMOUNT);
         borrow = bound(borrow, _maximumBorrow(collateral, ORACLE_MAX_PRICE), MAX_BORROW_AMOUNT);
 
@@ -73,7 +73,7 @@ contract MintIntegrationTest is BaseTest {
         assertEq(mad.nextPositionId(), positionId + 1);
     }
 
-    function testMintTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
+    function testMintRevertTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
         crashedPrice = bound(crashedPrice, 1, (ORACLE_MIN_PRICE * 9) / 10);
         collateral = bound(collateral, _minimumCollateral(crashedPrice), MAX_COLLATERAL_AMOUNT);
 
