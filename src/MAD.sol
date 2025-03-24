@@ -259,7 +259,7 @@ contract MAD is ERC20 {
         require(pos.owner != address(0), PositionDNE());
 
         // Calculate collateral points.
-        uint256 suppliedCollateralPoints = collateral.divWad(collateralPerCollateralPoint);
+        uint256 suppliedCollateralPoints = collateral / collateralPerCollateralPoint;
 
         // Update total system collateral points.
         totalSystemCollateralPoints += suppliedCollateralPoints;
