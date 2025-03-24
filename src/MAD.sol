@@ -162,8 +162,6 @@ contract MAD is ERC20 {
     //                           CLOSE                              //
     // =============================================================//
 
-    event Num(uint256 n);
-
     function close(uint256 positionId, address recipient) external {
         // Get the native token price.
         uint256 priceWAD = _getPriceWAD();
@@ -195,8 +193,6 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(recipient, posCollateral);
 
         // Burn debt amount of $MAD from system reserve.
-        emit Num(balanceOf(msg.sender));
-        emit Num(posDebt);
         _burn(msg.sender, posDebt);
 
         emit Close(positionId, msg.sender, posDebt, posCollateral);
