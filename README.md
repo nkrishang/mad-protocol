@@ -1,4 +1,4 @@
-# $MAD Stablecoin Protocol
+# Monad Algorithmic Dollar ($MAD)
 
 $MAD (**Monad Algorithmic Dollar**) Stablecoin Protocol is an immutable, governance-less and singleton-contract protocol for minting stablecoins fully backed by native tokens.
 
