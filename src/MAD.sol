@@ -248,7 +248,7 @@ contract MAD is ERC20 {
         // Transfer collateral to recipient.
         WRAPPED_NATIVE_TOKEN.transfer(recipient, collateral);
 
-        emit Supply(positionId, collateral);
+        emit Withdraw(positionId, collateral);
     }
 
     function supplyCollateral(uint256 positionId, uint256 collateral) external {
