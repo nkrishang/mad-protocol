@@ -130,16 +130,16 @@ contract MAD is ERC20 {
             collateralPerCollateralPoint = 1;
         } else {
             // If the system is initialized, ensure the system is healthy pre and post borrow.
-            uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(debtPerPoint);
-            uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(collateralPerPoint);
+            uint256 totalSystemDebt = totalSystemDebtPoints *  debtPerPoint;
+            uint256 totalSystemCollateral = totalSystemCollateralPoints * collateralPerPoint;
 
             // Check whether TCR pre-debt is above 110%
             require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
         }
 
         // Calculate debt and collateral points.
-        uint256 posDebtPoints = debt.divWad(debtPerPoint * 1 ether);
-        uint256 posCollateralPoints = collateral.divWad(collateralPerPoint * 1 ether);
+        uint256 posDebtPoints = debt / debtPerPoint;
+        uint256 posCollateralPoints = collateral / collateralPerPoint;
 
         // Update total system debt and collateral.
         totalSystemDebtPoints += posDebtPoints;
@@ -229,8 +229,8 @@ contract MAD is ERC20 {
         require(posDebt.divWad((posCollateral - collateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
         // Check whether TCR post-withdrawal is above 110%
-        uint256 totalSystemDebt = totalSystemDebtPoints.mulWad(debtPerPoint);
-        uint256 totalSystemCollateral = totalSystemCollateralPoints.mulWad(collateralPerPoint);
+        uint256 totalSystemDebt = totalSystemDebtPoints * debtPerPoint;
+        uint256 totalSystemCollateral = totalSystemCollateralPoints * collateralPerPoint;
 
         require(
             (totalSystemCollateral - collateral).mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds()
