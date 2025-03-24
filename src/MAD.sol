@@ -8,7 +8,7 @@ import {ERC20} from "lib/solady/src/tokens/ERC20.sol";
 import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
 
 /**
- * @title $MAD Stablecoin Protocol (Mint Against Deposit)
+ * @title $MAD Stablecoin Protocol (Monad Algorithmic Dollar)
  * @author github.com/nkrishang
  * @notice Immutable, governance-less, singleton-contract protocol for minting stablecoins fully backed by native tokens.
  *
@@ -477,7 +477,7 @@ contract MAD is ERC20 {
 
     /// @dev Returns the name of the token.
     function name() public pure override returns (string memory) {
-        return "Mint Against Deposit";
+        return "Monad Algorithmic Dollar";
     }
 
     /// @dev Returns the symbol of the token.
