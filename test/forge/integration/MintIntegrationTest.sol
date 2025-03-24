@@ -102,5 +102,61 @@ contract MintIntegrationTest is BaseTest {
         mad.mint(collateral, newBorrow, RECEIVER);
     }
 
-    function testMintAfterSystemInitialized() public {}
+    function testMintAfterSystemInitialized(uint256 x, uint256 y) public {
+        uint256 collateral = bound(x, _minimumCollateral(ORACLE_MIN_PRICE), MAX_COLLATERAL_AMOUNT);
+        uint256 borrow = bound(x, 1, _maximumBorrow(collateral, ORACLE_MIN_PRICE));
+
+        vm.deal(USER, collateral);
+        vm.prank(USER);
+        weth.deposit{value: collateral}();
+
+        vm.prank(USER);
+        mad.mint(collateral, borrow, RECEIVER);
+
+        uint256 debt = borrow + borrow.mulWadUp(BASE_FEE_RATE_BPS);
+
+        uint256 newCollateral = bound(y, _minimumCollateral(ORACLE_MIN_PRICE), MAX_COLLATERAL_AMOUNT);
+        uint256 newBorrow = bound(y, 1, _maximumBorrow(newCollateral, ORACLE_MIN_PRICE));
+
+        vm.deal(USER, newCollateral);
+        vm.prank(USER);
+        weth.deposit{value: newCollateral}();
+
+        assertEq(weth.balanceOf(address(mad)), collateral);
+        assertEq(weth.balanceOf(USER), newCollateral);
+
+        assertEq(mad.totalSupply(), borrow);
+        assertEq(mad.debtPerDebtPoint(), 1);
+        assertEq(mad.totalSystemDebtPoints(), debt);
+        assertEq(mad.collateralPerCollateralPoint(), 1);
+        assertEq(mad.totalSystemCollateralPoints(), collateral);
+
+        uint256 positionId = mad.nextPositionId();
+        assertEq(positionId, 1);
+
+        vm.prank(USER);
+        vm.expectEmit(true, true, false, true, address(mad));
+        emit ERC20.Transfer(address(0), RECEIVER, newBorrow);
+        mad.mint(newCollateral, newBorrow, RECEIVER);
+
+        uint256 newDebt = newBorrow + newBorrow.mulWadUp(BASE_FEE_RATE_BPS);
+
+        assertEq(mad.totalSupply(), borrow + newBorrow);
+        assertEq(mad.debtPerDebtPoint(), 1);
+        assertEq(mad.totalSystemDebtPoints(), debt + newDebt);
+        assertEq(mad.collateralPerCollateralPoint(), 1);
+        assertEq(mad.totalSystemCollateralPoints(), collateral + newCollateral);
+
+        assertEq(mad.balanceOf(RECEIVER), borrow + newBorrow);
+        assertEq(weth.balanceOf(address(mad)), collateral + newCollateral);
+        assertEq(weth.balanceOf(USER), 0);
+
+        (uint256 id, address owner, uint256 debtPoints, uint256 collateralPoints) = mad.positions(positionId);
+        assertEq(id, positionId);
+        assertEq(owner, USER);
+        assertEq(debtPoints, newDebt);
+        assertEq(collateralPoints, newCollateral);
+
+        assertEq(mad.nextPositionId(), positionId + 1);
+    }
 }
