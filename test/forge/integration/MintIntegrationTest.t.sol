@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import {BaseTest} from "../BaseTest.t.sol";
-import {Math} from "../helpers/Math.sol";
 
 import {MAD} from "src/MAD.sol";
 import {OracleMock} from "src/mock/OracleMock.sol";
