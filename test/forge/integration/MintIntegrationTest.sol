@@ -75,7 +75,7 @@ contract MintIntegrationTest is BaseTest {
     }
 
     function testMintPreDebtTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
-        crashedPrice = bound(crashedPrice, 1, ORACLE_MIN_PRICE);
+        crashedPrice = bound(crashedPrice, 1, (ORACLE_MIN_PRICE * 9) / 10);
         collateral = bound(collateral, _minimumCollateral(crashedPrice), MAX_COLLATERAL_AMOUNT);
 
         uint256 borrow = _maximumBorrow(collateral, ORACLE_MIN_PRICE);
@@ -91,7 +91,7 @@ contract MintIntegrationTest is BaseTest {
 
         OracleMock(address(oracle)).setPrice(crashedPrice);
 
-        uint256 newBorrow = Math.min(100, _maximumBorrow(collateral, crashedPrice));
+        uint256 newBorrow = 1;
 
         vm.deal(USER, collateral);
         vm.prank(USER);

@@ -86,7 +86,7 @@ contract BaseTest is Test {
 
     /// @dev Calculates the minimum collateral amount at an oracle price.
     function _minimumCollateral(uint256 oraclePrice) internal pure returns (uint256) {
-        return (MIN_COLLATERAL_VALUE_UNSCALED * 1 ether).divWad((oraclePrice * 1 ether) / (10 ** ORACLE_PRICE_SCALE));
+        return (MIN_COLLATERAL_VALUE_UNSCALED * 1 ether).divWadUp((oraclePrice * 1 ether) / (10 ** ORACLE_PRICE_SCALE));
     }
 
     /// @dev Calculates the maximum debt amount at a collateral amount and oracle price.
