@@ -162,6 +162,8 @@ contract MAD is ERC20 {
     //                           CLOSE                              //
     // =============================================================//
 
+    event Num(uint256 n);
+
     function close(uint256 positionId, address recipient) external {
         // Get the native token price.
         uint256 priceWAD = _getPriceWAD();
@@ -176,8 +178,8 @@ contract MAD is ERC20 {
         require(pos.owner == msg.sender, UnauthorizedCaller());
 
         // Calculate real position debt and collateral.
-        uint256 posDebt = debtPerDebtPoint.mulWad(pos.debtPoints);
-        uint256 posCollateral = collateralPerCollateralPoint.mulWad(pos.collateralPoints);
+        uint256 posDebt = pos.debtPoints * debtPerDebtPoint;
+        uint256 posCollateral = pos.collateralPoints * collateralPerCollateralPoint;
 
         // Check whether LTV is below 90%.
         require(posDebt.divWad((posCollateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
@@ -193,6 +195,8 @@ contract MAD is ERC20 {
         WRAPPED_NATIVE_TOKEN.transfer(recipient, posCollateral);
 
         // Burn debt amount of $MAD from system reserve.
+        emit Num(balanceOf(msg.sender));
+        emit Num(posDebt);
         _burn(msg.sender, posDebt);
 
         emit Close(positionId, msg.sender, posDebt, posCollateral);

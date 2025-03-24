@@ -32,6 +32,7 @@ contract BaseTest is Test {
 
     // Stakeholders
     address internal USER;
+    address internal SOMEONE;
     address internal RECEIVER;
     address internal LIQUIDATOR;
     address internal INSURANCE_RESERVE;
@@ -43,6 +44,7 @@ contract BaseTest is Test {
 
     function setUp() public virtual {
         USER = makeAddr("User");
+        SOMEONE = makeAddr("Someone");
         RECEIVER = makeAddr("Receiver");
         LIQUIDATOR = makeAddr("Liquidator");
         INSURANCE_RESERVE = makeAddr("Reserve");
@@ -57,6 +59,9 @@ contract BaseTest is Test {
         vm.label(address(mad), "MAD");
 
         vm.prank(USER);
+        weth.approve(address(mad), type(uint256).max);
+
+        vm.prank(SOMEONE);
         weth.approve(address(mad), type(uint256).max);
 
         vm.prank(RECEIVER);
