@@ -281,6 +281,11 @@ contract MAD is ERC20 {
         // Get the native token price.
         uint256 priceWAD = _getPriceWAD();
 
+        // Check whether TCR pre-debt is above 110%
+        uint256 totalSystemDebt = totalSystemDebtPoints * debtPerDebtPoint;
+        uint256 totalSystemCollateral = totalSystemCollateralPoints * collateralPerCollateralPoint;
+        require(totalSystemCollateral.mulWad(priceWAD).divWad(totalSystemDebt) > 1.1 ether, TCROutOfBounds());
+
         // Calculate fees amount.
         uint256 fees = _getFeeRateWAD(amount).mulWadUp(amount);
 
