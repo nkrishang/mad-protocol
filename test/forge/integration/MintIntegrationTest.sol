@@ -2,8 +2,10 @@
 pragma solidity ^0.8.28;
 
 import {BaseTest} from "../BaseTest.t.sol";
+import {Math} from "../helpers/Math.sol";
 
 import {MAD} from "src/MAD.sol";
+import {OracleMock} from "src/mock/OracleMock.sol";
 import {ERC20} from "lib/solady/src/tokens/ERC20.sol";
 import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
 
@@ -72,7 +74,33 @@ contract MintIntegrationTest is BaseTest {
         assertEq(mad.nextPositionId(), positionId + 1);
     }
 
-    function testMintPreDebtTCROutOfBounds() public {}
+    function testMintPreDebtTCROutOfBounds(uint256 collateral, uint256 crashedPrice) public {
+        crashedPrice = bound(crashedPrice, 1, ORACLE_MIN_PRICE);
+        collateral = bound(collateral, _minimumCollateral(crashedPrice), MAX_COLLATERAL_AMOUNT);
+
+        uint256 borrow = _maximumBorrow(collateral, ORACLE_MIN_PRICE);
+
+        vm.deal(USER, collateral);
+        vm.prank(USER);
+        weth.deposit{value: collateral}();
+
+        assertTrue(oracle.price() > crashedPrice);
+
+        vm.prank(USER);
+        mad.mint(collateral, borrow, RECEIVER);
+
+        OracleMock(address(oracle)).setPrice(crashedPrice);
+
+        uint256 newBorrow = Math.min(100, _maximumBorrow(collateral, crashedPrice));
+
+        vm.deal(USER, collateral);
+        vm.prank(USER);
+        weth.deposit{value: collateral}();
+
+        vm.prank(USER);
+        vm.expectRevert(MAD.TCROutOfBounds.selector);
+        mad.mint(collateral, newBorrow, RECEIVER);
+    }
 
     function testMintPostDebtTCROutOfBounds() public {}
 

@@ -4,11 +4,21 @@ pragma solidity ^0.8.28;
 import {IOracle} from "../interfaces/IOracle.sol";
 
 contract OracleMock is IOracle {
+    uint256 public fixedPrice;
+
+    function setPrice(uint256 p) external {
+        fixedPrice = p;
+    }
+
     function scale() external pure returns (uint8) {
         return 8;
     }
 
     function price() external view returns (uint256) {
+        if (fixedPrice > 0) {
+            return fixedPrice;
+        }
+
         if (block.timestamp == 0) {
             return 3 * 1e7; // 0.3
         }
