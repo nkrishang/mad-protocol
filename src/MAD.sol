@@ -217,14 +217,14 @@ contract MAD is ERC20 {
 
         // Calculate real position collateral.
         uint256 collateralPerPoint = collateralPerCollateralPoint;
-        uint256 posCollateral = collateralPerPoint.mulWad(pos.collateralPoints);
+        uint256 posCollateral = collateralPerPoint * pos.collateralPoints;
 
         // Check whether withdrawn collateral is less than position collateral.
         require(collateral < posCollateral, InsufficientCollateral());
 
         // Check whether post-withdraw LTV is below 90%.
         uint256 debtPerPoint = debtPerDebtPoint;
-        uint256 posDebt = debtPerPoint.mulWad(pos.debtPoints);
+        uint256 posDebt = debtPerPoint * pos.debtPoints;
 
         require(posDebt.divWad((posCollateral - collateral).mulWad(priceWAD)) < 0.9 ether, LTVOutOfBounds());
 
@@ -237,7 +237,7 @@ contract MAD is ERC20 {
         );
 
         // Calculate collateral points to be withdrawn.
-        uint256 withdrawnCollateralPoints = collateral.divWad(collateralPerPoint);
+        uint256 withdrawnCollateralPoints = collateral / collateralPerPoint;
 
         // Decrement position collateral points.
         positions[positionId].collateralPoints -= withdrawnCollateralPoints;
